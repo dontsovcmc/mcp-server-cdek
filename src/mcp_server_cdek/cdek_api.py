@@ -125,6 +125,59 @@ class CdekAPI:
             raise RuntimeError(f"Ошибка скачивания штрихкода: {resp.status_code}")
         return resp.content
 
+    # --- Этикетка ---
+
+    def start_label(self, cdek_number: int, fmt: str = "A6") -> str:
+        """Запросить генерацию этикетки, вернуть UUID задачи."""
+        data = self._post("/print/barcodes", {
+            "orders": [{"cdek_number": int(cdek_number)}],
+            "format": fmt,
+        })
+        return data["entity"]["uuid"]
+
+    def download_label(self, cdek_number: int, fmt: str = "A6") -> bytes:
+        """Сгенерировать и скачать PDF этикетки."""
+        label_uuid = self.start_label(cdek_number, fmt)
+        url = self.get_barcode_url(label_uuid)
+        resp = self.session.get(url, timeout=30)
+        if not resp.ok:
+            raise RuntimeError(f"Ошибка скачивания этикетки: {resp.status_code}")
+        return resp.content
+
+    # --- Накладная ---
+
+    def start_waybill(self, cdek_number: int) -> str:
+        """Запросить генерацию накладной, вернуть UUID задачи."""
+        data = self._post("/print/orders", {
+            "orders": [{"cdek_number": int(cdek_number)}],
+            "format": "A4",
+        })
+        return data["entity"]["uuid"]
+
+    def get_waybill_url(self, uuid: str, timeout: float = 10.0) -> str:
+        """Дождаться генерации накладной и вернуть URL на PDF."""
+        start = time.time()
+        while time.time() - start < timeout:
+            resp = self._get(f"/print/orders/{uuid}")
+            entity = resp.json()["entity"]
+            if entity.get("url"):
+                return entity["url"]
+            last_status = entity["statuses"][-1]["code"] if entity.get("statuses") else ""
+            if last_status == "INVALID":
+                raise RuntimeError(f"Ошибка генерации накладной: {entity['statuses']}")
+            time.sleep(1.0)
+            log.info("Накладная ещё не готова, ждём...")
+        raise RuntimeError(f"Накладная не готова за {timeout} секунд")
+
+    def download_waybill(self, cdek_number: int) -> bytes:
+        """Сгенерировать и скачать PDF накладной."""
+        waybill_uuid = self.start_waybill(cdek_number)
+        url = self.get_waybill_url(waybill_uuid)
+        resp = self.session.get(url, timeout=30)
+        if not resp.ok:
+            raise RuntimeError(f"Ошибка скачивания накладной: {resp.status_code}")
+        return resp.content
+
     # --- Города и ПВЗ ---
 
     def find_cities(self, city_name: str, size: int = 5) -> list:

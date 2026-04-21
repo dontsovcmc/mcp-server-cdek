@@ -14,6 +14,8 @@ MCP-сервер для работы с [API СДЭК v2](https://api-docs.cdek.
 | `cdek_create_order` | Создать заказ на доставку (от меня / ко мне, на ПВЗ / до двери) |
 | `cdek_track` | Отследить заказ по номеру СДЭК |
 | `cdek_barcode` | Скачать PDF штрихкода для заказа |
+| `cdek_label` | Скачать этикетку (A4/A5/A6/A7, по умолчанию A6 ~70x120мм) |
+| `cdek_waybill` | Скачать PDF накладной для заказа |
 | `cdek_delivery_points` | Поиск ПВЗ в городе |
 | `cdek_cities` | Поиск городов СДЭК по названию |
 
@@ -139,6 +141,9 @@ claude mcp remove cdek
 - «создай возвратный заказ от Сидорова, адрес: Самара, Ленина 10» → `cdek_create_order` (to_me)
 - «отследи посылку СДЭК 1234567890» → `cdek_track`
 - «скачай штрихкод для заказа 1234567890» → `cdek_barcode`
+- «скачай этикетку для заказа 1234567890» → `cdek_label`
+- «скачай этикетку A4 для заказа 1234567890» → `cdek_label` (format=A4)
+- «скачай накладную для заказа 1234567890» → `cdek_waybill`
 - «найди ПВЗ в Новосибирске» → `cdek_delivery_points`
 - «какие города СДЭК есть на "Новосиб"?» → `cdek_cities`
 - «добавь товар: Wi-Fi модем, 0.17 кг, 8x7x10 см» → `goods_add`
@@ -179,6 +184,13 @@ mcp-server-cdek track 1234567890
 
 # Скачать штрихкод
 mcp-server-cdek barcode 1234567890 --output /tmp/barcode.pdf
+
+# Скачать этикетку (по умолчанию A6 ~70x120мм)
+mcp-server-cdek label 1234567890 --output /tmp/label.pdf
+mcp-server-cdek label 1234567890 --output /tmp/label_a4.pdf --format A4
+
+# Скачать накладную
+mcp-server-cdek waybill 1234567890 --output /tmp/waybill.pdf
 
 # Поиск ПВЗ
 mcp-server-cdek delivery-points Москва --search Тверская

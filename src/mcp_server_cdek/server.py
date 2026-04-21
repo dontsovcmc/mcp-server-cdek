@@ -340,6 +340,43 @@ def cdek_barcode(cdek_number: int, output_path: str) -> str:
     return json.dumps({"path": os.path.abspath(output_path), "cdek_number": cdek_number}, ensure_ascii=False)
 
 
+# ── Label ──────────────────────────────────────────────────────────
+
+
+@mcp.tool()
+def cdek_label(cdek_number: int, output_path: str, format: str = "A6") -> str:
+    """Download shipping label (этикетка) PDF for a CDEK order.
+
+    Args:
+        cdek_number: CDEK tracking number
+        output_path: Absolute path to save PDF (e.g. /tmp/1234567890_label.pdf)
+        format: Label format — A4 (4 per page), A5 (2 per page), A6 (1 per page, ~70x120мм, default), A7 (small)
+    """
+    api = _get_api()
+    pdf = api.download_label(cdek_number, format)
+    with open(output_path, "wb") as f:
+        f.write(pdf)
+    return json.dumps({"path": os.path.abspath(output_path), "cdek_number": cdek_number, "format": format}, ensure_ascii=False)
+
+
+# ── Waybill ────────────────────────────────────────────────────────
+
+
+@mcp.tool()
+def cdek_waybill(cdek_number: int, output_path: str) -> str:
+    """Download waybill (накладная) PDF for a CDEK order.
+
+    Args:
+        cdek_number: CDEK tracking number
+        output_path: Absolute path to save PDF (e.g. /tmp/1234567890_waybill.pdf)
+    """
+    api = _get_api()
+    pdf = api.download_waybill(cdek_number)
+    with open(output_path, "wb") as f:
+        f.write(pdf)
+    return json.dumps({"path": os.path.abspath(output_path), "cdek_number": cdek_number}, ensure_ascii=False)
+
+
 # ── Delivery Points ─────────────────────────────────────────────────
 
 

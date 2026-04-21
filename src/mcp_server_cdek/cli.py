@@ -46,6 +46,18 @@ def main(argv: list[str] | None = None):
     p_barcode.add_argument("cdek_number", type=int, help="Номер СДЭК")
     p_barcode.add_argument("--output", required=True, help="Путь для сохранения PDF")
 
+    # label
+    p_label = sub.add_parser("label", help="Скачать этикетку (PDF)")
+    p_label.add_argument("cdek_number", type=int, help="Номер СДЭК")
+    p_label.add_argument("--output", required=True, help="Путь для сохранения PDF")
+    p_label.add_argument("--format", default="A6", choices=["A4", "A5", "A6", "A7"],
+                         help="Формат: A4 (4 шт), A5 (2 шт), A6 (~70x120мм, по умолчанию), A7 (маленькая)")
+
+    # waybill
+    p_waybill = sub.add_parser("waybill", help="Скачать накладную (PDF)")
+    p_waybill.add_argument("cdek_number", type=int, help="Номер СДЭК")
+    p_waybill.add_argument("--output", required=True, help="Путь для сохранения PDF")
+
     # delivery-points
     p_pvz = sub.add_parser("delivery-points", help="Поиск ПВЗ в городе")
     p_pvz.add_argument("city", help="Название города")
@@ -93,6 +105,8 @@ def main(argv: list[str] | None = None):
         ),
         "track": lambda: server.cdek_track(args.cdek_number),
         "barcode": lambda: server.cdek_barcode(args.cdek_number, args.output),
+        "label": lambda: server.cdek_label(args.cdek_number, args.output, args.format),
+        "waybill": lambda: server.cdek_waybill(args.cdek_number, args.output),
         "delivery-points": lambda: server.cdek_delivery_points(args.city, args.search),
         "cities": lambda: server.cdek_cities(args.city),
     }
