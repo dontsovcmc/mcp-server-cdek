@@ -1,0 +1,57 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.dontsovcmc/cdek",
+  "description": "MCP server for CDEK delivery service API — create orders, track shipments, search delivery points",
+  "repository": {
+    "url": "https://github.com/dontsovcmc/mcp-server-cdek",
+    "source": "github"
+  },
+  "version": "0.3.0",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "mcp-server-cdek",
+      "version": "0.3.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "runtimeHint": "uvx",
+      "environmentVariables": [
+        {
+          "name": "CDEK_CLIENT",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "CDEK_SECRET",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "CDEK_SENDER_COMPANY",
+          "isRequired": true
+        },
+        {
+          "name": "CDEK_SENDER_NAME",
+          "isRequired": true
+        },
+        {
+          "name": "CDEK_SENDER_FULL_NAME",
+          "isRequired": true
+        },
+        {
+          "name": "CDEK_SENDER_EMAIL",
+          "isRequired": true
+        },
+        {
+          "name": "CDEK_SENDER_PHONE",
+          "isRequired": true
+        },
+        {
+          "name": "CDEK_MY_PVZ",
+          "isRequired": false
+        }
+      ]
+    }
+  ]
+}
