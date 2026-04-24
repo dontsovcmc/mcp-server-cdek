@@ -4,6 +4,38 @@ import sys
 
 __version__ = "0.4.0"
 
+from .models import (  # noqa: E402, F401
+    CdekBaseModel,
+    City,
+    Contact,
+    DeliveryPoint,
+    DeliveryRequest,
+    EntityResponse,
+    Error,
+    IntakeRequest,
+    Item,
+    Location,
+    Money,
+    OrderInfo,
+    OrderRef,
+    OrderRequest,
+    OrderUpdateRequest,
+    Package,
+    Phone,
+    PrealertRequest,
+    PrintRequest,
+    Region,
+    RequestStatus,
+    Seller,
+    Service,
+    Status,
+    Tariff,
+    TariffRequest,
+    TariffResult,
+    Threshold,
+    WebhookRequest,
+)
+
 
 def main():
     if len(sys.argv) > 1 and not sys.argv[1].startswith("-"):

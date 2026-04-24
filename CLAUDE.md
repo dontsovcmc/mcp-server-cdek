@@ -31,6 +31,7 @@ src/mcp_server_cdek/
 ├── server.py            # FastMCP, все tools
 ├── cdek_api.py          # HTTP-клиент API СДЭК v2
 ├── config.py            # конфиг пользователя (~/.config/mcp-server-cdek/config.json)
+├── models.py            # Pydantic-модели всех объектов API СДЭК v2
 ├── goods.py             # локальный справочник товаров
 └── cli.py               # CLI-интерфейс
 ```
