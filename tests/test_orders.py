@@ -6,11 +6,38 @@ from mcp.shared.memory import create_connected_server_and_client_session
 from mcp_server_cdek.server import mcp
 
 
+MOCK_ORDER_INFO = {"entity": {"uuid": "aaa-bbb-ccc", "cdek_number": "1400567890", "statuses": []}, "requests": []}
 MOCK_UPDATE = {"entity": {"uuid": "aaa-bbb-ccc"}, "requests": [{"type": "UPDATE", "state": "ACCEPTED"}]}
 MOCK_DELETE = {"entity": {"uuid": "aaa-bbb-ccc"}, "requests": [{"type": "DELETE", "state": "ACCEPTED"}]}
 MOCK_RETURN = {"entity": {"uuid": "ret-uuid"}, "requests": [{"type": "CREATE", "state": "ACCEPTED"}]}
 MOCK_REFUSAL = {"entity": {"uuid": "aaa-bbb-ccc"}, "requests": [{"type": "CREATE", "state": "ACCEPTED"}]}
 MOCK_INTAKES = {"entity": {"uuid": "aaa-bbb-ccc", "intakes": [{"intake_uuid": "i-001"}]}}
+
+
+@pytest.mark.anyio
+async def test_cdek_get_order():
+    with patch("mcp_server_cdek.server.CdekAPI") as MockAPI:
+        instance = MockAPI.return_value
+        instance.get_order.return_value = MOCK_ORDER_INFO
+        async with create_connected_server_and_client_session(mcp._mcp_server) as session:
+            result = await session.call_tool("cdek_get_order", {"uuid": "aaa-bbb-ccc"})
+            assert not result.isError
+            data = json.loads(result.content[0].text)
+            assert data["entity"]["uuid"] == "aaa-bbb-ccc"
+        instance.get_order.assert_called_once_with("aaa-bbb-ccc")
+
+
+@pytest.mark.anyio
+async def test_cdek_get_order_by_im_number():
+    with patch("mcp_server_cdek.server.CdekAPI") as MockAPI:
+        instance = MockAPI.return_value
+        instance.get_order_by_im_number.return_value = MOCK_ORDER_INFO
+        async with create_connected_server_and_client_session(mcp._mcp_server) as session:
+            result = await session.call_tool("cdek_get_order_by_im_number", {"im_number": "IM-12345"})
+            assert not result.isError
+            data = json.loads(result.content[0].text)
+            assert data["entity"]["uuid"] == "aaa-bbb-ccc"
+        instance.get_order_by_im_number.assert_called_once_with("IM-12345")
 
 
 @pytest.mark.anyio

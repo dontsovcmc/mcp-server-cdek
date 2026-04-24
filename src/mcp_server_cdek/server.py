@@ -10,6 +10,7 @@ import time
 from mcp.server.fastmcp import FastMCP
 
 from .cdek_api import CdekAPI, TARIFF_WAREHOUSE_WAREHOUSE, TARIFF_WAREHOUSE_DOOR
+from .config import load_config, set_value as config_set_value, get_sender as config_get_sender, get_my_pvz as config_get_my_pvz, get_product_defaults as config_get_product_defaults
 from .goods import add_good, find_good, list_goods, remove_good
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", stream=sys.stderr)
@@ -27,26 +28,30 @@ def _get_api() -> CdekAPI:
 
 
 def _get_sender() -> dict:
-    """Собрать данные отправителя из переменных окружения."""
-    company = os.getenv("CDEK_SENDER_COMPANY", "")
-    name = os.getenv("CDEK_SENDER_NAME", "")
-    full_name = os.getenv("CDEK_SENDER_FULL_NAME", "")
-    email = os.getenv("CDEK_SENDER_EMAIL", "")
-    phone = os.getenv("CDEK_SENDER_PHONE", "")
+    """Собрать данные отправителя: env vars (приоритет) → config.json."""
+    cfg = config_get_sender()
+    company = os.getenv("CDEK_SENDER_COMPANY", "") or cfg.get("company", "")
+    name = os.getenv("CDEK_SENDER_NAME", "") or cfg.get("name", "")
+    full_name = os.getenv("CDEK_SENDER_FULL_NAME", "") or cfg.get("full_name", "")
+    email = os.getenv("CDEK_SENDER_EMAIL", "") or cfg.get("email", "")
+    phone = os.getenv("CDEK_SENDER_PHONE", "") or cfg.get("phone", "")
 
     missing = []
     if not company:
-        missing.append("CDEK_SENDER_COMPANY")
+        missing.append("sender.company")
     if not name:
-        missing.append("CDEK_SENDER_NAME")
+        missing.append("sender.name")
     if not full_name:
-        missing.append("CDEK_SENDER_FULL_NAME")
+        missing.append("sender.full_name")
     if not email:
-        missing.append("CDEK_SENDER_EMAIL")
+        missing.append("sender.email")
     if not phone:
-        missing.append("CDEK_SENDER_PHONE")
+        missing.append("sender.phone")
     if missing:
-        raise RuntimeError(f"Missing environment variables: {', '.join(missing)}")
+        raise RuntimeError(
+            f"Missing sender settings: {', '.join(missing)}. "
+            "Use config_set tool or CDEK_SENDER_* env vars."
+        )
 
     sender = {
         "company": company,
@@ -68,13 +73,14 @@ def _get_sender() -> dict:
 
 
 def _get_product_defaults() -> dict:
-    """Дефолтные параметры товара из env."""
+    """Дефолтные параметры товара: env vars (приоритет) → config.json → хардкод."""
+    cfg = config_get_product_defaults()
     return {
-        "product_name": os.getenv("CDEK_DEFAULT_PRODUCT_NAME", "Товар"),
-        "weight": float(os.getenv("CDEK_DEFAULT_WEIGHT", "0.17")),
-        "height": int(os.getenv("CDEK_DEFAULT_HEIGHT", "8")),
-        "width": int(os.getenv("CDEK_DEFAULT_WIDTH", "7")),
-        "length": int(os.getenv("CDEK_DEFAULT_LENGTH", "10")),
+        "product_name": os.getenv("CDEK_DEFAULT_PRODUCT_NAME", "") or cfg.get("name", "Товар"),
+        "weight": float(os.getenv("CDEK_DEFAULT_WEIGHT", "") or cfg.get("weight", 0.17)),
+        "height": int(os.getenv("CDEK_DEFAULT_HEIGHT", "") or cfg.get("height", 8)),
+        "width": int(os.getenv("CDEK_DEFAULT_WIDTH", "") or cfg.get("width", 7)),
+        "length": int(os.getenv("CDEK_DEFAULT_LENGTH", "") or cfg.get("length", 10)),
     }
 
 
@@ -128,6 +134,34 @@ def goods_remove(name: str) -> str:
     return json.dumps({"removed": item}, ensure_ascii=False)
 
 
+# ── Config ─────────────────────────────────────────────────────────
+
+
+@mcp.tool()
+def config_show() -> str:
+    """Show current CDEK server configuration (sender, PVZ, product defaults).
+
+    Reads from ~/.config/mcp-server-cdek/config.json. Does not show API credentials.
+    """
+    config = load_config()
+    return json.dumps(config, ensure_ascii=False)
+
+
+@mcp.tool()
+def config_set(section: str, key: str, value: str) -> str:
+    """Update a configuration value in ~/.config/mcp-server-cdek/config.json.
+
+    Args:
+        section: Config section — "sender", "my_pvz", or "product_defaults"
+        key: Setting key. For sender: company, name, full_name, email, phone.
+             For product_defaults: name, weight, height, width, length.
+             For my_pvz: ignored (pass any value).
+        value: New value (numbers are auto-converted for product_defaults)
+    """
+    config = config_set_value(section, key, value)
+    return json.dumps(config, ensure_ascii=False)
+
+
 # ── Create Order ────────────────────────────────────────────────────
 
 
@@ -147,22 +181,22 @@ def cdek_create_order(
     quantity: int = 1,
     price: float = 0,
 ) -> str:
-    """Create a CDEK delivery order.
+    """Регистрация заказа на доставку (POST /v2/orders).
+
+    Создает в ИС СДЭК заказ на доставку. Работает асинхронно — статус ACCEPTED
+    не гарантирует создание, результат проверяется через методы получения информации.
 
     Two directions:
-    - "from_me": send package from my warehouse/PVZ to recipient's PVZ or door
-    - "to_me": receive package from sender to my PVZ (returns)
+    - "from_me": send from my warehouse/PVZ to recipient's PVZ (tariff 136) or door (tariff 137)
+    - "to_me": receive from sender to my PVZ (returns, tariff 136). Requires my_pvz in config.
 
-    For "from_me": specify either pvz (delivery point code or address) or address (door delivery).
-    For "to_me": specify address (sender's address), package goes to CDEK_MY_PVZ.
-
-    If product parameters are not specified, defaults from env or goods catalog are used.
+    If product parameters are not specified, defaults from goods catalog or config are used.
 
     Args:
         direction: "from_me" or "to_me"
-        recipient_name: Recipient/sender full name
-        recipient_phone: Phone number (e.g. "+79001234567")
-        pvz: PVZ code (e.g. "MSK005") or address for PVZ search (e.g. "Москва, Тверская"). For from_me warehouse delivery.
+        recipient_name: Recipient full name (получатель)
+        recipient_phone: Phone in international format (e.g. "+79001234567")
+        pvz: PVZ code (e.g. "MSK005") or address for PVZ search. For from_me warehouse delivery.
         address: Full delivery address for door delivery (from_me) or sender address (to_me)
         recipient_email: Email (optional)
         product_name: Product name (overrides defaults)
@@ -253,9 +287,11 @@ def cdek_create_order(
     else:  # to_me
         if not address:
             raise RuntimeError("For to_me specify sender address")
-        my_pvz = os.getenv("CDEK_MY_PVZ")
+        my_pvz = os.getenv("CDEK_MY_PVZ", "") or config_get_my_pvz()
         if not my_pvz:
-            raise RuntimeError("CDEK_MY_PVZ environment variable is required for to_me orders")
+            raise RuntimeError(
+                "my_pvz not configured. Use config_set tool or CDEK_MY_PVZ env var."
+            )
 
         payload = {
             "number": number,
@@ -293,14 +329,47 @@ def cdek_create_order(
     return json.dumps(result, ensure_ascii=False)
 
 
+# ── Get Order ──────────────────────────────────────────────────────
+
+
+@mcp.tool()
+def cdek_get_order(uuid: str) -> str:
+    """Получение информации о заказе по UUID (GET /v2/orders/{uuid}).
+
+    Возвращает детальную информацию о ранее созданном заказе по его идентификатору.
+    Также позволяет получить информацию о заказах, созданных через другие каналы.
+
+    Args:
+        uuid: Order UUID (идентификатор заказа в ИС СДЭК)
+    """
+    api = _get_api()
+    data = api.get_order(uuid)
+    return json.dumps(data, ensure_ascii=False)
+
+
+@mcp.tool()
+def cdek_get_order_by_im_number(im_number: str) -> str:
+    """Получение информации о заказе по номеру ИМ (GET /v2/orders?im_number=).
+
+    Возвращает информацию о заказе по номеру в информационной системе клиента.
+
+    Args:
+        im_number: Order number in client's system (номер заказа в ИС Клиента)
+    """
+    api = _get_api()
+    data = api.get_order_by_im_number(im_number)
+    return json.dumps(data, ensure_ascii=False)
+
+
 # ── Track Order ─────────────────────────────────────────────────────
 
 
 @mcp.tool()
 def cdek_track(cdek_number: int) -> str:
-    """Track a CDEK order by its CDEK number.
+    """Получение информации о заказе по номеру СДЭК (GET /v2/orders).
 
-    Returns current order status, statuses history, and delivery details.
+    Возвращает статус заказа, историю статусов и детали доставки.
+    Также позволяет получить информацию о заказах, созданных через ЛК и другие каналы.
 
     Args:
         cdek_number: CDEK tracking number (e.g. 1234567890)
@@ -327,7 +396,9 @@ def cdek_track(cdek_number: int) -> str:
 
 @mcp.tool()
 def cdek_barcode(cdek_number: int, output_path: str) -> str:
-    """Download barcode label PDF for a CDEK order.
+    """Формирование и скачивание ШК-места (POST /v2/print/barcodes).
+
+    Формирует ШК-место в формате PDF для заказа и сохраняет файл.
 
     Args:
         cdek_number: CDEK tracking number
@@ -345,12 +416,14 @@ def cdek_barcode(cdek_number: int, output_path: str) -> str:
 
 @mcp.tool()
 def cdek_label(cdek_number: int, output_path: str, format: str = "A6") -> str:
-    """Download shipping label (этикетка) PDF for a CDEK order.
+    """Формирование и скачивание ШК-места с выбором формата (POST /v2/print/barcodes).
+
+    Формирует ШК-место в формате PDF с указанным размером и сохраняет файл.
 
     Args:
         cdek_number: CDEK tracking number
         output_path: Absolute path to save PDF (e.g. /tmp/1234567890_label.pdf)
-        format: Label format — A4 (4 per page), A5 (2 per page), A6 (1 per page, ~70x120мм, default), A7 (small)
+        format: Print format — A4 (4 per page), A5 (2 per page), A6 (default, ~70x120mm), A7 (small)
     """
     api = _get_api()
     pdf = api.download_label(cdek_number, format)
@@ -364,7 +437,9 @@ def cdek_label(cdek_number: int, output_path: str, format: str = "A6") -> str:
 
 @mcp.tool()
 def cdek_waybill(cdek_number: int, output_path: str) -> str:
-    """Download waybill (накладная) PDF for a CDEK order.
+    """Формирование и скачивание квитанции к заказу (POST /v2/print/orders).
+
+    Формирует квитанцию (накладную) в формате PDF и сохраняет файл.
 
     Args:
         cdek_number: CDEK tracking number
@@ -382,7 +457,10 @@ def cdek_waybill(cdek_number: int, output_path: str) -> str:
 
 @mcp.tool()
 def cdek_delivery_points(city: str, search: str = "") -> str:
-    """Search CDEK delivery points (PVZ) in a city.
+    """Получение списка офисов СДЭК (GET /v2/deliverypoints).
+
+    Возвращает список действующих ПВЗ и постаматов в городе.
+    Рекомендуется обновлять список офисов раз в сутки.
 
     Args:
         city: City name (e.g. "Москва", "Санкт-Петербург")
@@ -417,7 +495,9 @@ def cdek_delivery_points(city: str, search: str = "") -> str:
 
 @mcp.tool()
 def cdek_cities(city: str) -> str:
-    """Search CDEK cities by name. Returns city codes needed for other operations.
+    """Получение списка населенных пунктов (GET /v2/location/cities).
+
+    Возвращает коды городов СДЭК, необходимые для других операций.
 
     Args:
         city: City name or part of it (e.g. "Новосиб")
@@ -441,10 +521,12 @@ def cdek_cities(city: str) -> str:
 
 @mcp.tool()
 def cdek_regions(country_codes: str = "", size: int = 5) -> str:
-    """Search CDEK regions.
+    """Получение списка регионов (GET /v2/location/regions).
+
+    Возвращает детальную информацию о регионах с возможностью фильтрации по стране.
 
     Args:
-        country_codes: Country codes filter (e.g. "RU", "KZ"). Empty for all.
+        country_codes: Country codes in ISO_3166-1_alpha-2 (e.g. "RU", "KZ"). Empty for all.
         size: Max number of results (default 5)
     """
     api = _get_api()
@@ -458,7 +540,7 @@ def cdek_regions(country_codes: str = "", size: int = 5) -> str:
 
 @mcp.tool()
 def cdek_postalcodes(city_code: int) -> str:
-    """Get postal codes for a city by its CDEK city code.
+    """Получение почтовых индексов города (GET /v2/location/postalcodes).
 
     Args:
         city_code: CDEK city code (use cdek_cities to find it)
@@ -470,7 +552,7 @@ def cdek_postalcodes(city_code: int) -> str:
 
 @mcp.tool()
 def cdek_coordinates(latitude: float, longitude: float) -> str:
-    """Find CDEK location by geographic coordinates.
+    """Получение локации по координатам (GET /v2/location/coordinates).
 
     Args:
         latitude: Latitude (e.g. 55.7558)
@@ -483,11 +565,13 @@ def cdek_coordinates(latitude: float, longitude: float) -> str:
 
 @mcp.tool()
 def cdek_suggest_cities(name: str, country_code: str = "") -> str:
-    """Autocomplete city name suggestions.
+    """Подбор локации по названию города (GET /v2/location/suggest/cities).
+
+    Возвращает подсказки по подбору населенного пункта по его наименованию.
 
     Args:
         name: City name or prefix (e.g. "Моск")
-        country_code: Country code filter (e.g. "RU"). Empty for all.
+        country_code: Country code in ISO_3166-1_alpha-2 (e.g. "RU"). Empty for all.
     """
     api = _get_api()
     suggestions = api.suggest_cities(name, country_code=country_code)
@@ -499,10 +583,12 @@ def cdek_suggest_cities(name: str, country_code: str = "") -> str:
 
 @mcp.tool()
 def cdek_all_tariffs(lang: str = "rus") -> str:
-    """Get list of all available CDEK tariffs.
+    """Список доступных тарифов (GET /v2/calculator/alltariffs).
+
+    Возвращает все доступные и актуальные тарифы по договору.
 
     Args:
-        lang: Language for tariff names — "rus" or "eng" (default "rus")
+        lang: Language — "rus", "eng" or "zho" (default "rus")
     """
     api = _get_api()
     tariffs = api.get_all_tariffs(lang=lang)
@@ -519,10 +605,12 @@ def cdek_calculate_tariff(
     width: int = 10,
     height: int = 10,
 ) -> str:
-    """Calculate delivery cost for a specific tariff.
+    """Расчет по коду тарифа (POST /v2/calculator/tariff).
+
+    Расчет стоимости и сроков доставки по конкретному тарифу с учетом весо-габаритных характеристик.
 
     Args:
-        tariff_code: CDEK tariff code (e.g. 136, 137)
+        tariff_code: CDEK tariff code (e.g. 136 warehouse-warehouse, 137 warehouse-door)
         from_city: Sender city name (e.g. "Москва")
         to_city: Recipient city name (e.g. "Новосибирск")
         weight_kg: Package weight in kg
@@ -552,7 +640,9 @@ def cdek_calculate_tarifflist(
     width: int = 10,
     height: int = 10,
 ) -> str:
-    """Calculate delivery cost for all available tariffs between two cities.
+    """Расчет по доступным тарифам (POST /v2/calculator/tarifflist).
+
+    Расчет стоимости и сроков доставки по всем доступным тарифам между двумя городами.
 
     Args:
         from_city: Sender city name
@@ -583,7 +673,9 @@ def cdek_calculate_tariff_and_service(
     width: int = 10,
     height: int = 10,
 ) -> str:
-    """Calculate delivery cost for all tariffs with additional services info.
+    """Расчет по доступным тарифам и дополнительным услугам (POST /v2/calculator/tariffAndService).
+
+    Расчет стоимости и сроков доставки по доступным тарифам с учетом дополнительных услуг.
 
     Args:
         from_city: Sender city name
@@ -610,10 +702,15 @@ def cdek_calculate_tariff_and_service(
 
 @mcp.tool()
 def cdek_update_order(uuid: str = "", cdek_number: str = "", comment: str = "", delivery_point: str = "") -> str:
-    """Update an existing CDEK order.
+    """Изменение заказа (PATCH /v2/orders).
+
+    Изменение созданного ранее заказа. Возможно только при отсутствии движения
+    груза на складе СДЭК (статус заказа "Создан").
+
+    At least one of uuid or cdek_number must be provided.
 
     Args:
-        uuid: Order UUID
+        uuid: Order UUID (идентификатор в ИС СДЭК)
         cdek_number: CDEK tracking number (alternative to uuid)
         comment: New comment for the order
         delivery_point: New delivery point code
@@ -636,7 +733,9 @@ def cdek_update_order(uuid: str = "", cdek_number: str = "", comment: str = "", 
 
 @mcp.tool()
 def cdek_delete_order(uuid: str) -> str:
-    """Delete (cancel) a CDEK order by UUID.
+    """Удаление заказа (DELETE /v2/orders/{uuid}).
+
+    Удаление возможно только при отсутствии движения груза на складе СДЭК (статус "Создан").
 
     Args:
         uuid: Order UUID to delete
@@ -648,10 +747,13 @@ def cdek_delete_order(uuid: str) -> str:
 
 @mcp.tool()
 def cdek_client_return(uuid: str, tariff_code: int) -> str:
-    """Create a client return for an order.
+    """Регистрация клиентского возврата (POST /v2/orders/{uuid}/clientReturn).
+
+    Оформление возврата для интернет-магазинов. Создается только для заказов
+    в конечном статусе "Вручен". Отличие от обычного возврата: возврат оформляет сам клиент.
 
     Args:
-        uuid: Order UUID
+        uuid: Order UUID (идентификатор прямого заказа)
         tariff_code: Tariff code for return delivery (e.g. 136)
     """
     api = _get_api()
@@ -661,7 +763,11 @@ def cdek_client_return(uuid: str, tariff_code: int) -> str:
 
 @mcp.tool()
 def cdek_order_refusal(uuid: str) -> str:
-    """Refuse (reject) an order.
+    """Регистрация отказа (POST /v2/orders/{uuid}/refusal).
+
+    Регистрация отказа от заказа и возврат в интернет-магазин. Заказ может быть
+    отменен в любом статусе до "Вручен"/"Не вручен". Для статуса "Создан"
+    рекомендуется использовать удаление заказа.
 
     Args:
         uuid: Order UUID to refuse
@@ -673,7 +779,7 @@ def cdek_order_refusal(uuid: str) -> str:
 
 @mcp.tool()
 def cdek_order_intakes(order_uuid: str) -> str:
-    """Get courier intakes (pickups) for an order.
+    """Получение информации о всех заявках по заказу (GET /v2/orders/{uuid}/intakes).
 
     Args:
         order_uuid: Order UUID
@@ -688,27 +794,30 @@ def cdek_order_intakes(order_uuid: str) -> str:
 
 @mcp.tool()
 def cdek_create_intake(
+    intake_date: str,
     cdek_number: str = "",
     order_uuid: str = "",
-    intake_date: str = "",
     intake_time_from: str = "09:00",
     intake_time_to: str = "18:00",
     comment: str = "",
     name: str = "",
 ) -> str:
-    """Create a courier intake request (заявка на вызов курьера).
+    """Регистрация заявки на вызов курьера (POST /v2/intakes).
+
+    Вызов курьера для забора груза со склада с последующей доставкой до склада СДЭК.
+    Рекомендуемый минимальный диапазон времени — не менее 3 часов.
+
+    At least one of cdek_number or order_uuid must be provided.
 
     Args:
+        intake_date: Pickup date YYYY-MM-DD (не более 31 дня от текущей)
         cdek_number: CDEK order number
         order_uuid: Order UUID (alternative to cdek_number)
-        intake_date: Pickup date YYYY-MM-DD (required)
-        intake_time_from: Pickup time from HH:MM (default 09:00)
-        intake_time_to: Pickup time to HH:MM (default 18:00)
+        intake_time_from: Pickup time from HH:MM (default 09:00, не ранее 9:00)
+        intake_time_to: Pickup time to HH:MM (default 18:00, не позднее 22:00)
         comment: Comment for the courier
-        name: Contact name for the courier
+        name: Cargo description
     """
-    if not intake_date:
-        raise RuntimeError("intake_date is required (YYYY-MM-DD)")
     if not cdek_number and not order_uuid:
         raise RuntimeError("Either cdek_number or order_uuid is required")
     api = _get_api()
@@ -731,7 +840,9 @@ def cdek_create_intake(
 
 @mcp.tool()
 def cdek_update_intake(uuid: str, status_code: str) -> str:
-    """Update intake request status.
+    """Изменение статуса заявки на вызов курьера (PATCH /v2/intakes).
+
+    Изменяет статус заявки на "Требует обработки" с дополнительными статусами.
 
     Args:
         uuid: Intake request UUID
@@ -744,7 +855,7 @@ def cdek_update_intake(uuid: str, status_code: str) -> str:
 
 @mcp.tool()
 def cdek_get_intake(uuid: str) -> str:
-    """Get intake request info by UUID.
+    """Получение информации о заявке по UUID (GET /v2/intakes/{uuid}).
 
     Args:
         uuid: Intake request UUID
@@ -756,7 +867,9 @@ def cdek_get_intake(uuid: str) -> str:
 
 @mcp.tool()
 def cdek_delete_intake(uuid: str) -> str:
-    """Delete an intake request.
+    """Удаление заявки на вызов курьера (DELETE /v2/intakes/{uuid}).
+
+    Заявку можно удалить в любом статусе, отличном от финального.
 
     Args:
         uuid: Intake request UUID
@@ -768,11 +881,13 @@ def cdek_delete_intake(uuid: str) -> str:
 
 @mcp.tool()
 def cdek_intake_available_days(city: str, date: str = "") -> str:
-    """Get available days for courier intake in a city.
+    """Получение дат вызова курьера для НП (POST /v2/intakes/availableDays).
+
+    Возвращает доступные даты для забора груза курьером со склада.
 
     Args:
         city: City name (e.g. "Москва")
-        date: Optional date filter YYYY-MM-DD
+        date: До какого числа включительно получить дни (по умолчанию: сегодня + 2 недели)
     """
     api = _get_api()
     city_code = api.find_city_code(city)
@@ -785,27 +900,32 @@ def cdek_intake_available_days(city: str, date: str = "") -> str:
 
 @mcp.tool()
 def cdek_create_delivery(
+    date: str,
     cdek_number: str = "",
     order_uuid: str = "",
-    date: str = "",
     time_from: str = "",
     time_to: str = "",
     comment: str = "",
     delivery_point: str = "",
 ) -> str:
-    """Register a delivery agreement (договорённость о доставке).
+    """Регистрация договоренности о доставке (POST /v2/delivery).
+
+    Фиксирует оговоренные с клиентом дату и время доставки (приезда курьера),
+    а также позволяет изменить адрес доставки.
+
+    At least one of cdek_number or order_uuid must be provided.
 
     Args:
+        date: Delivery date YYYY-MM-DD (согласованная с получателем)
         cdek_number: CDEK order number
         order_uuid: Order UUID (alternative to cdek_number)
-        date: Delivery date YYYY-MM-DD (required)
-        time_from: Delivery time from HH:MM
-        time_to: Delivery time to HH:MM
+        time_from: Delivery time from HH:MM (обязательно для "до двери")
+        time_to: Delivery time to HH:MM (обязательно для "до двери")
         comment: Comment for delivery
-        delivery_point: Delivery point code
+        delivery_point: Delivery point code (обязательно для "до склада")
     """
-    if not date:
-        raise RuntimeError("date is required (YYYY-MM-DD)")
+    if not cdek_number and not order_uuid:
+        raise RuntimeError("Either cdek_number or order_uuid is required")
     api = _get_api()
     payload: dict = {"date": date}
     if cdek_number:
@@ -826,7 +946,7 @@ def cdek_create_delivery(
 
 @mcp.tool()
 def cdek_get_delivery(uuid: str) -> str:
-    """Get delivery info by UUID.
+    """Получение информации о договоренности о доставке (GET /v2/delivery/{uuid}).
 
     Args:
         uuid: Delivery UUID
@@ -838,7 +958,12 @@ def cdek_get_delivery(uuid: str) -> str:
 
 @mcp.tool()
 def cdek_delivery_intervals(cdek_number: str = "", order_uuid: str = "") -> str:
-    """Get delivery intervals for an order.
+    """Получение интервалов доставки (GET /v2/delivery/intervals).
+
+    Возвращает доступные даты и временные интервалы для регистрации
+    договоренности о доставке по уже созданному заказу.
+
+    At least one of cdek_number or order_uuid must be provided.
 
     Args:
         cdek_number: CDEK order number
@@ -853,23 +978,23 @@ def cdek_delivery_intervals(cdek_number: str = "", order_uuid: str = "") -> str:
 
 @mcp.tool()
 def cdek_estimated_intervals(
+    to_city: str,
     from_city: str = "",
-    to_city: str = "",
     tariff_code: int = 136,
     date_time: str = "",
     shipment_point: str = "",
 ) -> str:
-    """Get estimated delivery intervals before creating an order.
+    """Получение интервалов доставки до создания заказа (POST /v2/delivery/estimatedIntervals).
+
+    Позволяет получить доступные интервалы доставки "до двери" до создания заказа.
 
     Args:
+        to_city: Recipient city name
         from_city: Sender city name (e.g. "Москва")
-        to_city: Recipient city name (required)
         tariff_code: CDEK tariff code (default 136)
-        date_time: Date-time ISO format
-        shipment_point: Shipment point code
+        date_time: Date-time ISO format (планируемая дата отправки)
+        shipment_point: Shipment point code (для тарифов "от склада")
     """
-    if not to_city:
-        raise RuntimeError("to_city is required")
     api = _get_api()
     to_code = api.find_city_code(to_city)
     payload: dict = {"to_location": {"code": to_code}, "tariff_code": tariff_code}
@@ -888,10 +1013,14 @@ def cdek_estimated_intervals(
 
 @mcp.tool()
 def cdek_create_webhook(type: str, url: str) -> str:
-    """Create a webhook subscription.
+    """Добавление подписки на вебхуки (POST /v2/webhooks).
+
+    Типы: ORDER_STATUS, PRINT_FORM, PREALERT_CLOSED, ACCOMPANYING_WAYBILL,
+    ORDER_CHANGED, DELIVERY_COST_CHANGED, DELIVERY_PROBLEM, DELIVERY_DATE_CHANGED,
+    ORDER_MODE_CHANGED, COURIER_INFO.
 
     Args:
-        type: Webhook type — ORDER_STATUS, PRINT_FORM, DOWNLOAD_PHOTO, etc.
+        type: Webhook type (e.g. ORDER_STATUS, PRINT_FORM)
         url: URL to receive webhook events
     """
     api = _get_api()
@@ -901,7 +1030,7 @@ def cdek_create_webhook(type: str, url: str) -> str:
 
 @mcp.tool()
 def cdek_list_webhooks() -> str:
-    """List all webhook subscriptions."""
+    """Получение информации о подписках на вебхуки (GET /v2/webhooks)."""
     api = _get_api()
     data = api.list_webhooks()
     return json.dumps(data, ensure_ascii=False)
@@ -909,7 +1038,7 @@ def cdek_list_webhooks() -> str:
 
 @mcp.tool()
 def cdek_get_webhook(uuid: str) -> str:
-    """Get webhook subscription by UUID.
+    """Получение информации о подписке по UUID (GET /v2/webhooks/{uuid}).
 
     Args:
         uuid: Webhook subscription UUID
@@ -921,7 +1050,7 @@ def cdek_get_webhook(uuid: str) -> str:
 
 @mcp.tool()
 def cdek_delete_webhook(uuid: str) -> str:
-    """Delete a webhook subscription.
+    """Удаление подписки по UUID (DELETE /v2/webhooks/{uuid}).
 
     Args:
         uuid: Webhook subscription UUID
@@ -936,12 +1065,15 @@ def cdek_delete_webhook(uuid: str) -> str:
 
 @mcp.tool()
 def cdek_checks(order_uuid: str = "", cdek_number: str = "", date: str = "") -> str:
-    """Get check/receipt info for a CDEK order.
+    """Получение информации о чеках (GET /v2/check).
+
+    Информация о чеке по заказу или за выбранный день.
+    Provide at least one filter: order_uuid, cdek_number, or date.
 
     Args:
         order_uuid: Order UUID
         cdek_number: CDEK tracking number
-        date: Date in YYYY-MM-DD format
+        date: Date in YYYY-MM-DD format (дата создания чека)
     """
     api = _get_api()
     data = api.get_checks(order_uuid=order_uuid, cdek_number=cdek_number, date=date)
@@ -953,12 +1085,15 @@ def cdek_checks(order_uuid: str = "", cdek_number: str = "", date: str = "") -> 
 
 @mcp.tool()
 def cdek_passport(cdek_number: str = "", order_uuid: str = "", client: str = "") -> str:
-    """Get passport data associated with a CDEK order.
+    """Получение информации о паспортных данных (GET /v2/passport).
+
+    Информация о готовности передавать заказы на таможню по международным заказам.
+    Provide at least one of cdek_number, order_uuid, or client.
 
     Args:
         cdek_number: CDEK tracking number
         order_uuid: Order UUID
-        client: Client identifier
+        client: Client filter (если не передано — и по отправителю, и по получателю)
     """
     api = _get_api()
     data = api.get_passport(cdek_number=cdek_number, order_uuid=order_uuid, client=client)
@@ -970,7 +1105,12 @@ def cdek_passport(cdek_number: str = "", order_uuid: str = "", client: str = "")
 
 @mcp.tool()
 def cdek_request_photos(period_begin: str = "", period_end: str = "", cdek_numbers: str = "") -> str:
-    """Request photo documents for orders.
+    """Получение заказов с готовыми фото (POST /v2/photoDocument).
+
+    Возвращает перечень заказов со ссылками на готовые к скачиванию архивы с фото.
+    Требуется подключенная фотоуслуга и настроенный фотопроект.
+
+    Provide at least one filter: date range (period_begin/period_end) or cdek_numbers.
 
     Args:
         period_begin: Start date (YYYY-MM-DD)
@@ -991,7 +1131,9 @@ def cdek_request_photos(period_begin: str = "", period_end: str = "", cdek_numbe
 
 @mcp.tool()
 def cdek_download_photos(uuid: str, output_path: str) -> str:
-    """Download photo documents archive (zip) by UUID.
+    """Скачивание готового архива с фото (GET /v2/photoDocument/{uuid}).
+
+    Скачивает архив с фото документов в zip-формате.
 
     Args:
         uuid: Photo document request UUID
@@ -1009,11 +1151,14 @@ def cdek_download_photos(uuid: str, output_path: str) -> str:
 
 @mcp.tool()
 def cdek_create_prealert(planned_date: str, shipment_point: str, cdek_numbers: str) -> str:
-    """Register a prealert for upcoming shipments.
+    """Регистрация преалерта (POST /v2/prealert).
+
+    Информирование СДЭК о намерении передать заказы на склад.
+    Реестр заказов, которые клиент собирается передать.
 
     Args:
-        planned_date: Planned date (YYYY-MM-DD)
-        shipment_point: Shipment point code (e.g. "MSK005")
+        planned_date: Planned date YYYY-MM-DD (планируемая дата передачи)
+        shipment_point: Shipment point code (код ПВЗ для передачи, e.g. "MSK005")
         cdek_numbers: Comma-separated CDEK numbers
     """
     orders = [{"cdek_number": n.strip()} for n in cdek_numbers.split(",")]
@@ -1024,7 +1169,7 @@ def cdek_create_prealert(planned_date: str, shipment_point: str, cdek_numbers: s
 
 @mcp.tool()
 def cdek_get_prealert(uuid: str) -> str:
-    """Get prealert info by UUID.
+    """Получение информации о преалерте (GET /v2/prealert/{uuid}).
 
     Args:
         uuid: Prealert UUID
@@ -1045,14 +1190,17 @@ def cdek_reverse_availability(
     shipment_point: str = "",
     delivery_point: str = "",
 ) -> str:
-    """Check reverse delivery availability.
+    """Проверка доступности реверса (POST /v2/reverse/availability).
+
+    Проверяет доступность обратной доставки до создания прямого заказа.
+    При доступности возвращается пустой ответ с кодом 200.
 
     Args:
         tariff_code: CDEK tariff code (e.g. 136)
         from_city: Sender city name
         to_city: Recipient city name
-        shipment_point: Shipment point code
-        delivery_point: Delivery point code
+        shipment_point: Shipment point code (для тарифов "от склада")
+        delivery_point: Delivery point code (для тарифов "до склада")
     """
     api = _get_api()
     payload: dict = {"tariff_code": tariff_code}
@@ -1073,7 +1221,9 @@ def cdek_reverse_availability(
 
 @mcp.tool()
 def cdek_registries(date: str) -> str:
-    """Get registries info for a specific date.
+    """Получение информации о реестрах наложенных платежей (GET /v2/registries).
+
+    Реестры НП, по которым клиенту был переведен наложенный платеж в заданную дату.
 
     Args:
         date: Date in YYYY-MM-DD format
@@ -1088,7 +1238,9 @@ def cdek_registries(date: str) -> str:
 
 @mcp.tool()
 def cdek_international_restrictions(tariff_code: int = 0, from_city: str = "", to_city: str = "") -> str:
-    """Check international package restrictions.
+    """Получение ограничений по международным заказам (POST /v2/international/package/restrictions).
+
+    Ограничения по направлению и тарифу для международного заказа.
 
     Args:
         tariff_code: CDEK tariff code (0 to omit)
