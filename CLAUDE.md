@@ -30,13 +30,14 @@ src/mcp_server_cdek/
 ├── __main__.py          # python -m entry point
 ├── server.py            # FastMCP, все tools
 ├── cdek_api.py          # HTTP-клиент API СДЭК v2
+├── config.py            # конфиг пользователя (~/.config/mcp-server-cdek/config.json)
 ├── goods.py             # локальный справочник товаров
 └── cli.py               # CLI-интерфейс
 ```
 
 ### API СДЭК
 
-- Документация: https://api-docs.cdek.ru/29923741.html
+- Документация: https://apidoc.cdek.ru/
 - Base URL: `https://api.cdek.ru/v2`
 - Авторизация: OAuth 2.0 (client_credentials → Bearer token)
 

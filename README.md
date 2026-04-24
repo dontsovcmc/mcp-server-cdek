@@ -2,7 +2,9 @@
 
 # mcp-server-cdek
 
-MCP-сервер для работы с [API СДЭК v2](https://api-docs.cdek.ru/29923741.html) через Claude Code, Claude Desktop и другие MCP-совместимые клиенты.
+[![Version](https://img.shields.io/badge/version-0.4.0-blue)](https://github.com/dontsovcmc/mcp-server-cdek)
+
+MCP-сервер для работы с [API СДЭК v2](https://apidoc.cdek.ru/) через Claude Code, Claude Desktop и другие MCP-совместимые клиенты.
 
 Все данные остаются на вашем компьютере — ключи никуда не передаются.
 
@@ -28,6 +30,14 @@ MCP-сервер для работы с [API СДЭК v2](https://api-docs.cdek.
 
 Товары хранятся локально в `~/.config/mcp-server-cdek/goods.json`. При создании заказа параметры берутся из справочника (если не указаны явно).
 
+### Настройки
+| Инструмент | Описание |
+|------------|----------|
+| `config_show` | Показать текущую конфигурацию (отправитель, ПВЗ, дефолты товара) |
+| `config_set` | Установить значение конфигурации |
+
+Настройки хранятся в `~/.config/mcp-server-cdek/config.json`. Можно настроить через Claude: *«установи компанию-отправителя ООО Рога»*.
+
 ## Настройка
 
 ### Шаг 1. Получить ключи API СДЭК
@@ -51,11 +61,6 @@ MCP-сервер для работы с [API СДЭК v2](https://api-docs.cdek.
 claude mcp add cdek \
   -e CDEK_CLIENT=ваш_client_id \
   -e CDEK_SECRET=ваш_client_secret \
-  -e CDEK_SENDER_COMPANY="ООО Ваша Компания" \
-  -e CDEK_SENDER_NAME="Иванов И.И." \
-  -e CDEK_SENDER_FULL_NAME="Иванов Иван Иванович" \
-  -e CDEK_SENDER_EMAIL="delivery@example.com" \
-  -e CDEK_SENDER_PHONE="+79001234567" \
   -- uvx mcp-server-cdek
 ```
 
@@ -67,13 +72,10 @@ pip install mcp-server-cdek
 claude mcp add cdek \
   -e CDEK_CLIENT=ваш_client_id \
   -e CDEK_SECRET=ваш_client_secret \
-  -e CDEK_SENDER_COMPANY="ООО Ваша Компания" \
-  -e CDEK_SENDER_NAME="Иванов И.И." \
-  -e CDEK_SENDER_FULL_NAME="Иванов Иван Иванович" \
-  -e CDEK_SENDER_EMAIL="delivery@example.com" \
-  -e CDEK_SENDER_PHONE="+79001234567" \
   -- python -m mcp_server_cdek
 ```
+
+Данные отправителя настраиваются через Claude: *«установи отправителя: ООО Компания, Иванов И.И., ...»* → `config_set`. Также можно передать через env vars (см. ниже).
 
 Для удаления:
 ```bash
@@ -99,18 +101,14 @@ claude mcp remove cdek
       "args": ["mcp-server-cdek"],
       "env": {
         "CDEK_CLIENT": "ваш_client_id",
-        "CDEK_SECRET": "ваш_client_secret",
-        "CDEK_SENDER_COMPANY": "ООО Ваша Компания",
-        "CDEK_SENDER_NAME": "Иванов И.И.",
-        "CDEK_SENDER_FULL_NAME": "Иванов Иван Иванович",
-        "CDEK_SENDER_EMAIL": "delivery@example.com",
-        "CDEK_SENDER_PHONE": "+79001234567",
-        "CDEK_MY_PVZ": "MSK123"
+        "CDEK_SECRET": "ваш_client_secret"
       }
     }
   }
 }
 ```
+
+Остальные настройки (отправитель, ПВЗ, дефолты товара) задаются через `config_set` или env vars (см. таблицу ниже).
 
 ### Переменные окружения
 
@@ -118,17 +116,19 @@ claude mcp remove cdek
 |-----------|:-----------:|----------|
 | `CDEK_CLIENT` | да | Client ID из личного кабинета СДЭК |
 | `CDEK_SECRET` | да | Client Secret из личного кабинета СДЭК |
-| `CDEK_SENDER_COMPANY` | да | Название компании отправителя |
-| `CDEK_SENDER_NAME` | да | Краткое имя отправителя |
-| `CDEK_SENDER_FULL_NAME` | да | Полное ФИО отправителя |
-| `CDEK_SENDER_EMAIL` | да | Email отправителя |
-| `CDEK_SENDER_PHONE` | да | Телефон отправителя |
-| `CDEK_MY_PVZ` | нет | Код вашего ПВЗ (для приёма посылок "ко мне") |
-| `CDEK_DEFAULT_PRODUCT_NAME` | нет | Название товара по умолчанию (Товар) |
-| `CDEK_DEFAULT_WEIGHT` | нет | Вес по умолчанию в кг (0.17) |
-| `CDEK_DEFAULT_HEIGHT` | нет | Высота по умолчанию в см (8) |
-| `CDEK_DEFAULT_WIDTH` | нет | Ширина по умолчанию в см (7) |
-| `CDEK_DEFAULT_LENGTH` | нет | Длина по умолчанию в см (10) |
+| `CDEK_SENDER_COMPANY` | нет* | Название компании отправителя |
+| `CDEK_SENDER_NAME` | нет* | Краткое имя отправителя |
+| `CDEK_SENDER_FULL_NAME` | нет* | Полное ФИО отправителя |
+| `CDEK_SENDER_EMAIL` | нет* | Email отправителя |
+| `CDEK_SENDER_PHONE` | нет* | Телефон отправителя |
+| `CDEK_MY_PVZ` | нет* | Код вашего ПВЗ (для приёма посылок "ко мне") |
+| `CDEK_DEFAULT_PRODUCT_NAME` | нет* | Название товара по умолчанию (Товар) |
+| `CDEK_DEFAULT_WEIGHT` | нет* | Вес по умолчанию в кг (0.17) |
+| `CDEK_DEFAULT_HEIGHT` | нет* | Высота по умолчанию в см (8) |
+| `CDEK_DEFAULT_WIDTH` | нет* | Ширина по умолчанию в см (7) |
+| `CDEK_DEFAULT_LENGTH` | нет* | Длина по умолчанию в см (10) |
+
+\* Можно задать через `config_set` вместо переменных окружения. Env vars имеют приоритет над конфиг-файлом.
 
 ### Шаг 3. Проверить
 
@@ -155,16 +155,11 @@ claude mcp remove cdek
 
 ### Требования
 
-Переменные окружения `CDEK_CLIENT`, `CDEK_SECRET` и данные отправителя должны быть установлены:
+Переменные окружения `CDEK_CLIENT` и `CDEK_SECRET` обязательны. Данные отправителя берутся из `~/.config/mcp-server-cdek/config.json` или переменных окружения:
 
 ```bash
 export CDEK_CLIENT=ваш_client_id
 export CDEK_SECRET=ваш_client_secret
-export CDEK_SENDER_COMPANY="ООО Ваша Компания"
-export CDEK_SENDER_NAME="Иванов И.И."
-export CDEK_SENDER_FULL_NAME="Иванов Иван Иванович"
-export CDEK_SENDER_EMAIL="delivery@example.com"
-export CDEK_SENDER_PHONE="+79001234567"
 ```
 
 ### Команды
