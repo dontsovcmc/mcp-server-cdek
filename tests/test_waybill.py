@@ -1,4 +1,5 @@
 import json
+import os
 import pytest
 from unittest.mock import patch, mock_open
 
@@ -25,7 +26,7 @@ async def test_cdek_label():
                 assert "path" in data
 
         instance.download_label.assert_called_once_with(1234567890, "A6")
-        m.assert_called_once_with("/tmp/test_label.pdf", "wb")
+        m.assert_called_once_with(os.path.realpath("/tmp/test_label.pdf"), "wb")
 
 
 @pytest.mark.anyio
@@ -61,7 +62,7 @@ async def test_cdek_waybill():
                 assert "path" in data
 
         instance.download_waybill.assert_called_once_with(1234567890)
-        m.assert_called_once_with("/tmp/test_waybill.pdf", "wb")
+        m.assert_called_once_with(os.path.realpath("/tmp/test_waybill.pdf"), "wb")
 
 
 @pytest.mark.anyio

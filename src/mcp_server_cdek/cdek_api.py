@@ -5,11 +5,9 @@ Docs: https://api-docs.cdek.ru/29923741.html
 
 import time
 import logging
-import sys
 
 import requests
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", stream=sys.stderr)
 log = logging.getLogger(__name__)
 
 BASE_URL = "https://api.cdek.ru/v2"
@@ -21,7 +19,9 @@ TARIFF_WAREHOUSE_DOOR = 137
 class CdekAPI:
     """Синхронный клиент API СДЭК v2."""
 
-    def __init__(self, client_id: str, client_secret: str):
+    def __init__(self, client_id: str, client_secret: str, timeout: int = 30, file_timeout: int = 60):
+        self.timeout = timeout
+        self.file_timeout = file_timeout
         self.session = requests.Session()
         self._auth(client_id, client_secret)
 
@@ -33,24 +33,27 @@ class CdekAPI:
                 "client_id": client_id,
                 "client_secret": client_secret,
             },
-            timeout=10,
+            timeout=self.timeout,
         )
         if not resp.ok:
-            raise RuntimeError(f"CDEK auth error {resp.status_code}: {resp.text}")
+            log.debug("CDEK auth error body: %s", resp.text)
+            raise RuntimeError(f"CDEK auth error {resp.status_code}")
         token = resp.json()["access_token"]
         self.session.headers.update({"Authorization": f"Bearer {token}"})
         log.info("СДЭК авторизация OK")
 
     def _get(self, path: str, **kwargs) -> requests.Response:
-        resp = self.session.get(f"{BASE_URL}{path}", timeout=30, **kwargs)
+        resp = self.session.get(f"{BASE_URL}{path}", timeout=self.timeout, **kwargs)
         if not resp.ok:
-            raise RuntimeError(f"GET {path} -> {resp.status_code}: {resp.text}")
+            log.debug("GET %s error body: %s", path, resp.text)
+            raise RuntimeError(f"GET {path} -> {resp.status_code}")
         return resp
 
     def _post(self, path: str, payload: dict, **kwargs) -> dict:
-        resp = self.session.post(f"{BASE_URL}{path}", json=payload, timeout=30, **kwargs)
+        resp = self.session.post(f"{BASE_URL}{path}", json=payload, timeout=self.timeout, **kwargs)
         if not resp.ok:
-            raise RuntimeError(f"POST {path} -> {resp.status_code}: {resp.text}")
+            log.debug("POST %s error body: %s", path, resp.text)
+            raise RuntimeError(f"POST {path} -> {resp.status_code}")
         data = resp.json()
         if data.get("requests"):
             for req in data["requests"]:
@@ -59,9 +62,10 @@ class CdekAPI:
         return data
 
     def _patch(self, path: str, payload: dict, **kwargs) -> dict:
-        resp = self.session.patch(f"{BASE_URL}{path}", json=payload, timeout=30, **kwargs)
+        resp = self.session.patch(f"{BASE_URL}{path}", json=payload, timeout=self.timeout, **kwargs)
         if not resp.ok:
-            raise RuntimeError(f"PATCH {path} -> {resp.status_code}: {resp.text}")
+            log.debug("PATCH %s error body: %s", path, resp.text)
+            raise RuntimeError(f"PATCH {path} -> {resp.status_code}")
         data = resp.json()
         if data.get("requests"):
             for req in data["requests"]:
@@ -70,9 +74,10 @@ class CdekAPI:
         return data
 
     def _delete(self, path: str, **kwargs) -> dict:
-        resp = self.session.delete(f"{BASE_URL}{path}", timeout=30, **kwargs)
+        resp = self.session.delete(f"{BASE_URL}{path}", timeout=self.timeout, **kwargs)
         if not resp.ok:
-            raise RuntimeError(f"DELETE {path} -> {resp.status_code}: {resp.text}")
+            log.debug("DELETE %s error body: %s", path, resp.text)
+            raise RuntimeError(f"DELETE {path} -> {resp.status_code}")
         return resp.json()
 
     # --- Заказы ---
@@ -92,6 +97,7 @@ class CdekAPI:
         """Дождаться создания заказа, вернуть данные заказа с cdek_number."""
         start = time.time()
         order = None
+        delay = 2.0
         while time.time() - start < timeout:
             order = self.get_order(uuid)
             statuses = {s["code"] for s in order["entity"]["statuses"]}
@@ -99,7 +105,8 @@ class CdekAPI:
                 cdek_number = order["entity"]["cdek_number"]
                 log.info("Заказ создан! СДЭК номер: %s", cdek_number)
                 return order["entity"]
-            time.sleep(2.0)
+            time.sleep(delay)
+            delay = min(delay * 2, 16.0)
 
         messages = []
         if order:
@@ -121,6 +128,7 @@ class CdekAPI:
     def get_barcode_url(self, uuid: str, timeout: float = 10.0) -> str:
         """Дождаться генерации штрихкода и вернуть URL на PDF."""
         start = time.time()
+        delay = 2.0
         while time.time() - start < timeout:
             resp = self._get(f"/print/barcodes/{uuid}")
             entity = resp.json()["entity"]
@@ -129,7 +137,8 @@ class CdekAPI:
             last_status = entity["statuses"][-1]["code"] if entity.get("statuses") else ""
             if last_status == "INVALID":
                 raise RuntimeError(f"Ошибка генерации штрихкода: {entity['statuses']}")
-            time.sleep(1.0)
+            time.sleep(delay)
+            delay = min(delay * 2, 16.0)
             log.info("Штрихкод ещё не готов, ждём...")
         raise RuntimeError(f"Штрихкод не готов за {timeout} секунд")
 
@@ -137,7 +146,7 @@ class CdekAPI:
         """Сгенерировать и скачать PDF штрихкода."""
         barcode_uuid = self.start_barcode(cdek_number)
         url = self.get_barcode_url(barcode_uuid)
-        resp = self.session.get(url, timeout=30)
+        resp = self.session.get(url, timeout=self.timeout)
         if not resp.ok:
             raise RuntimeError(f"Ошибка скачивания штрихкода: {resp.status_code}")
         return resp.content
@@ -156,7 +165,7 @@ class CdekAPI:
         """Сгенерировать и скачать PDF этикетки."""
         label_uuid = self.start_label(cdek_number, fmt)
         url = self.get_barcode_url(label_uuid)
-        resp = self.session.get(url, timeout=30)
+        resp = self.session.get(url, timeout=self.timeout)
         if not resp.ok:
             raise RuntimeError(f"Ошибка скачивания этикетки: {resp.status_code}")
         return resp.content
@@ -174,6 +183,7 @@ class CdekAPI:
     def get_waybill_url(self, uuid: str, timeout: float = 10.0) -> str:
         """Дождаться генерации накладной и вернуть URL на PDF."""
         start = time.time()
+        delay = 2.0
         while time.time() - start < timeout:
             resp = self._get(f"/print/orders/{uuid}")
             entity = resp.json()["entity"]
@@ -182,7 +192,8 @@ class CdekAPI:
             last_status = entity["statuses"][-1]["code"] if entity.get("statuses") else ""
             if last_status == "INVALID":
                 raise RuntimeError(f"Ошибка генерации накладной: {entity['statuses']}")
-            time.sleep(1.0)
+            time.sleep(delay)
+            delay = min(delay * 2, 16.0)
             log.info("Накладная ещё не готова, ждём...")
         raise RuntimeError(f"Накладная не готова за {timeout} секунд")
 
@@ -190,7 +201,7 @@ class CdekAPI:
         """Сгенерировать и скачать PDF накладной."""
         waybill_uuid = self.start_waybill(cdek_number)
         url = self.get_waybill_url(waybill_uuid)
-        resp = self.session.get(url, timeout=30)
+        resp = self.session.get(url, timeout=self.timeout)
         if not resp.ok:
             raise RuntimeError(f"Ошибка скачивания накладной: {resp.status_code}")
         return resp.content
@@ -396,9 +407,10 @@ class CdekAPI:
 
     def download_photo_archive(self, uuid: str) -> bytes:
         """Скачать архив фото-документов по UUID."""
-        resp = self.session.get(f"{BASE_URL}/photoDocument/{uuid}", timeout=60)
+        resp = self.session.get(f"{BASE_URL}/photoDocument/{uuid}", timeout=self.file_timeout)
         if not resp.ok:
-            raise RuntimeError(f"Ошибка скачивания фото-архива: {resp.status_code}: {resp.text}")
+            log.debug("Photo archive download error body: %s", resp.text)
+            raise RuntimeError(f"Ошибка скачивания фото-архива: {resp.status_code}")
         return resp.content
 
     # --- Преалерт ---
