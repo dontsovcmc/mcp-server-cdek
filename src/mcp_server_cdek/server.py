@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import sys
+import tempfile
 import time
 
 from mcp.server.fastmcp import FastMCP
@@ -19,12 +20,41 @@ log = logging.getLogger(__name__)
 mcp = FastMCP("cdek")
 
 
+_api_instance: CdekAPI | None = None
+
+
 def _get_api() -> CdekAPI:
-    client_id = os.getenv("CDEK_CLIENT")
-    client_secret = os.getenv("CDEK_SECRET")
-    if not client_id or not client_secret:
-        raise RuntimeError("CDEK_CLIENT and CDEK_SECRET environment variables are required")
-    return CdekAPI(client_id, client_secret)
+    global _api_instance
+    if _api_instance is None:
+        client_id = os.getenv("CDEK_CLIENT")
+        client_secret = os.getenv("CDEK_SECRET")
+        if not client_id or not client_secret:
+            raise RuntimeError("CDEK_CLIENT and CDEK_SECRET environment variables are required")
+        timeout = int(os.getenv("CDEK_TIMEOUT", "30"))
+        file_timeout = int(os.getenv("CDEK_FILE_TIMEOUT", "60"))
+        _api_instance = CdekAPI(client_id, client_secret, timeout=timeout, file_timeout=file_timeout)
+    return _api_instance
+
+
+def _safe_output_path(path: str) -> str:
+    """Resolve and validate output path — only home or system temp allowed."""
+    resolved = os.path.realpath(path)
+    home = os.path.realpath(os.path.expanduser("~"))
+
+    tmp_dirs = {os.path.realpath(tempfile.gettempdir())}
+    if os.path.isdir("/tmp"):
+        tmp_dirs.add(os.path.realpath("/tmp"))
+
+    is_under_home = resolved.startswith(home + os.sep)
+    is_under_tmp = any(resolved.startswith(d + os.sep) for d in tmp_dirs)
+
+    if not (is_under_home or is_under_tmp):
+        raise ValueError(f"Output path must be under home or temp directory: {path}")
+
+    if is_under_home and os.sep + "." in resolved[len(home):]:
+        raise ValueError(f"Writing to hidden files/directories is not allowed: {path}")
+
+    return resolved
 
 
 def _get_sender() -> dict:
@@ -406,9 +436,10 @@ def cdek_barcode(cdek_number: int, output_path: str) -> str:
     """
     api = _get_api()
     pdf = api.download_barcode(cdek_number)
+    output_path = _safe_output_path(output_path)
     with open(output_path, "wb") as f:
         f.write(pdf)
-    return json.dumps({"path": os.path.abspath(output_path), "cdek_number": cdek_number}, ensure_ascii=False)
+    return json.dumps({"path": output_path, "cdek_number": cdek_number}, ensure_ascii=False)
 
 
 # ── Label ──────────────────────────────────────────────────────────
@@ -427,9 +458,10 @@ def cdek_label(cdek_number: int, output_path: str, format: str = "A6") -> str:
     """
     api = _get_api()
     pdf = api.download_label(cdek_number, format)
+    output_path = _safe_output_path(output_path)
     with open(output_path, "wb") as f:
         f.write(pdf)
-    return json.dumps({"path": os.path.abspath(output_path), "cdek_number": cdek_number, "format": format}, ensure_ascii=False)
+    return json.dumps({"path": output_path, "cdek_number": cdek_number, "format": format}, ensure_ascii=False)
 
 
 # ── Waybill ────────────────────────────────────────────────────────
@@ -447,9 +479,10 @@ def cdek_waybill(cdek_number: int, output_path: str) -> str:
     """
     api = _get_api()
     pdf = api.download_waybill(cdek_number)
+    output_path = _safe_output_path(output_path)
     with open(output_path, "wb") as f:
         f.write(pdf)
-    return json.dumps({"path": os.path.abspath(output_path), "cdek_number": cdek_number}, ensure_ascii=False)
+    return json.dumps({"path": output_path, "cdek_number": cdek_number}, ensure_ascii=False)
 
 
 # ── Delivery Points ─────────────────────────────────────────────────
@@ -1141,9 +1174,10 @@ def cdek_download_photos(uuid: str, output_path: str) -> str:
     """
     api = _get_api()
     content = api.download_photo_archive(uuid)
+    output_path = _safe_output_path(output_path)
     with open(output_path, "wb") as f:
         f.write(content)
-    return json.dumps({"path": os.path.abspath(output_path), "uuid": uuid, "size": len(content)}, ensure_ascii=False)
+    return json.dumps({"path": output_path, "uuid": uuid, "size": len(content)}, ensure_ascii=False)
 
 
 # ── Prealert ───────────────────────────────────────────────────────
