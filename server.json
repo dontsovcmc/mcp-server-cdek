@@ -6,12 +6,12 @@
     "url": "https://github.com/dontsovcmc/mcp-server-cdek",
     "source": "github"
   },
-  "version": "0.4.0",
+  "version": "0.5.0",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "mcp-server-cdek",
-      "version": "0.4.0",
+      "version": "0.5.0",
       "transport": {
         "type": "stdio"
       },
@@ -56,6 +56,16 @@
           "name": "CDEK_MY_PVZ",
           "isRequired": false,
           "description": "My PVZ code for returns (can also be set via config_set tool)"
+        },
+        {
+          "name": "CDEK_TIMEOUT",
+          "isRequired": false,
+          "description": "HTTP request timeout in seconds (default 30)"
+        },
+        {
+          "name": "CDEK_FILE_TIMEOUT",
+          "isRequired": false,
+          "description": "File download timeout in seconds (default 60)"
         }
       ]
     }
