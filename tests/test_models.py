@@ -29,7 +29,6 @@ from mcp_server_cdek.models import (
     Tariff,
     TariffRequest,
     TariffResult,
-    Threshold,
     WebhookRequest,
 )
 

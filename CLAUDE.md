@@ -10,9 +10,22 @@
 pip install -e ".[test]"
 ```
 
+### Загрузка переменных из файла
+
+```bash
+# MCP-сервер с env-файлом
+mcp-server-cdek --env /path/to/.env
+
+# CLI с env-файлом
+mcp-server-cdek --env /path/to/.env track 1234567890
+```
+
+`--env` загружает переменные через `python-dotenv` до инициализации сервера. Без `--env` — стандартные переменные окружения.
+
 ### Запуск тестов
 
 ```bash
+ruff check src/ tests/
 pytest tests/ -v
 ```
 
@@ -26,7 +39,7 @@ GitHub Actions: `.github/workflows/test.yml`, `runs-on: self-hosted`. Токен
 
 ```
 src/mcp_server_cdek/
-├── __init__.py          # main(), версия
+├── __init__.py          # main(), версия, _load_env()
 ├── __main__.py          # python -m entry point
 ├── server.py            # FastMCP, все tools
 ├── cdek_api.py          # HTTP-клиент API СДЭК v2
@@ -41,6 +54,15 @@ src/mcp_server_cdek/
 - Документация: https://apidoc.cdek.ru/
 - Base URL: `https://api.cdek.ru/v2`
 - Авторизация: OAuth 2.0 (client_credentials → Bearer token)
+
+### Переменные окружения
+
+| Переменная | Обязательная | По умолчанию | Описание |
+|------------|:------------:|:------------:|----------|
+| `CDEK_CLIENT` | да | — | Client ID из личного кабинета СДЭК |
+| `CDEK_SECRET` | да | — | Client Secret из личного кабинета СДЭК |
+| `CDEK_TIMEOUT` | нет | `30` | Таймаут HTTP-запросов (секунды) |
+| `CDEK_FILE_TIMEOUT` | нет | `60` | Таймаут файловых операций (секунды) |
 
 ### Создание заказов
 
@@ -74,9 +96,21 @@ src/mcp_server_cdek/
    ```bash
    mcp-server-cdek --version 2>/dev/null || python -c "import mcp_server_cdek; print(mcp_server_cdek.__version__)"
    ```
-4. Сообщить пользователю новую версию и попросить перезапустить Claude Code.
+4. Сообщить пользователю новую версию и попросить перезапустить Claude Code (MCP-серверы перезапускаются при рестарте).
 
-### Правила
+### README.md
+
+При изменениях в коде обновлять [README.md](README.md):
+- **Новый инструмент** — добавить строку в таблицу «Возможности» (MCP tool + CLI команда + описание).
+- **Новая CLI-команда** — добавить в раздел «CLI-режим» → «Команды».
+- **Новая переменная окружения** — добавить в таблицу «Переменные окружения».
+- **Новый релиз** — обновить версию в бейджике.
+
+### Правила кода
+
+**Полные правила кода — в [development.md](development.md) (раздел "Правила кода").**
+
+### Правила Git и workflow
 
 - **CRITICAL: НИКОГДА не коммить в master!** Все коммиты — только в рабочую ветку.
 - **Все изменения — через Pull Request в master.** Создать ветку, закоммитить, сделать rebase на свежий master, запушить, создать PR.
@@ -91,4 +125,5 @@ src/mcp_server_cdek/
 - Не хардкодить токены и секреты в коде.
 - stdout в MCP сервере занят JSON-RPC — для логов использовать только stderr.
 - **ПЕРЕД КАЖДЫМ КОММИТОМ** проверять все исходные файлы, тесты и документацию на наличие реальных персональных данных (ИНН, номера счетов, имена, адреса, телефоны, email). Заменять на вымышленные.
-- **В КАЖДОМ PR** обновлять версию в `pyproject.toml` и `src/mcp_server_cdek/__init__.py` (patch для фиксов, minor для новых фич).
+- **В КАЖДОМ PR** обновлять версию в `pyproject.toml`, `src/mcp_server_cdek/__init__.py` и `server.json` (patch для фиксов, minor для новых фич).
+- **ПЕРЕД публикацией в MCP-реестр** обязательно запускать `mcp-publisher validate` — проверяет `server.json` на соответствие схеме реестра.

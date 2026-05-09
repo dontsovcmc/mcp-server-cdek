@@ -17,6 +17,8 @@ def main(argv: list[str] | None = None):
         description="СДЭК: MCP-сервер и CLI",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument("--env", metavar="PATH",
+                        help="Загрузить переменные окружения из файла (формат KEY=VALUE)")
 
     sub = parser.add_subparsers(dest="command")
 
@@ -378,13 +380,16 @@ def main(argv: list[str] | None = None):
 
     if args.command == "goods":
         if args.goods_command == "list":
-            handler = lambda: server.goods_list()
+            def handler():
+                return server.goods_list()
         elif args.goods_command == "add":
-            handler = lambda: server.goods_add(
-                args.name, args.weight, args.height, args.width, args.length, args.price,
-            )
+            def handler():
+                return server.goods_add(
+                    args.name, args.weight, args.height, args.width, args.length, args.price,
+                )
         elif args.goods_command == "remove":
-            handler = lambda: server.goods_remove(args.name)
+            def handler():
+                return server.goods_remove(args.name)
         else:
             p_goods.print_help()
             sys.exit(1)

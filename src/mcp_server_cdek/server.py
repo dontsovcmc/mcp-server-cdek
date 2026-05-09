@@ -12,12 +12,25 @@ from mcp.server.fastmcp import FastMCP
 
 from .cdek_api import CdekAPI, TARIFF_WAREHOUSE_WAREHOUSE, TARIFF_WAREHOUSE_DOOR
 from .config import load_config, set_value as config_set_value, get_sender as config_get_sender, get_my_pvz as config_get_my_pvz, get_product_defaults as config_get_product_defaults
-from .goods import add_good, find_good, list_goods, remove_good
+from .goods import add_good, list_goods, remove_good
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", stream=sys.stderr)
 log = logging.getLogger(__name__)
 
-mcp = FastMCP("cdek")
+mcp = FastMCP(
+    "cdek",
+    instructions=(
+        "CDEK delivery service API server. "
+        "Use cdek_cities to find city codes. "
+        "Use cdek_delivery_points to find pickup points. "
+        "Use cdek_create_order to create a shipment (from_me or to_me direction). "
+        "Use cdek_track to check order status by CDEK number. "
+        "Use cdek_barcode, cdek_label, cdek_waybill to download PDF documents. "
+        "Use cdek_calculate_tariff or cdek_calculate_tarifflist for price estimation. "
+        "Use config_show/config_set to manage sender settings. "
+        "Use goods_list/goods_add/goods_remove to manage the product catalog."
+    ),
+)
 
 
 _api_instance: CdekAPI | None = None
