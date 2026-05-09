@@ -2,53 +2,81 @@
 
 # mcp-server-cdek
 
-[![Version](https://img.shields.io/badge/version-0.4.0-blue)](https://github.com/dontsovcmc/mcp-server-cdek)
+[![Version](https://img.shields.io/badge/version-0.6.0-blue)](https://github.com/dontsovcmc/mcp-server-cdek)
 
-MCP-сервер для работы с [API СДЭК v2](https://apidoc.cdek.ru/) через Claude Code, Claude Desktop и другие MCP-совместимые клиенты.
+MCP-сервер, CLI-утилита и библиотека Pydantic-моделей для [API СДЭК v2](https://apidoc.cdek.ru/).
+
+- **MCP-сервер** — интеграция с Claude Code, Claude Desktop и другими MCP-клиентами
+- **CLI-утилита** — работа с API из терминала, скрипты и автоматизация
+- **Pydantic-модели** — типизированные модели API для использования в своих Python-программах
 
 Все данные остаются на вашем компьютере — ключи никуда не передаются.
+
+## Оглавление
+
+- [Возможности](#возможности)
+- [MCP-сервер](#mcp-сервер)
+  - [Установка](#установка)
+  - [Подключение к Claude Code](#подключение-к-claude-code)
+  - [Подключение к Claude Desktop](#подключение-к-claude-desktop)
+  - [Подключение через --mcp-config](#подключение-через---mcp-config)
+  - [Примеры](#примеры-mcp)
+- [CLI-утилита](#cli-утилита)
+  - [Установка](#установка-cli)
+  - [Использование](#использование-cli)
+  - [Примеры команд](#примеры-команд)
+- [Pydantic-модели](#pydantic-модели)
+  - [Установка](#установка-библиотеки)
+  - [Использование в своих программах](#использование-в-своих-программах)
+- [Переменные окружения](#переменные-окружения)
+- [Разработка](#разработка)
+- [Лицензия](#лицензия)
 
 ## Возможности
 
 ### Доставка
-| Инструмент | Описание |
-|------------|----------|
-| `cdek_create_order` | Создать заказ на доставку (от меня / ко мне, на ПВЗ / до двери) |
-| `cdek_track` | Отследить заказ по номеру СДЭК |
-| `cdek_barcode` | Скачать PDF штрихкода для заказа |
-| `cdek_label` | Скачать этикетку (A4/A5/A6/A7, по умолчанию A6 ~70x120мм) |
-| `cdek_waybill` | Скачать PDF накладной для заказа |
-| `cdek_delivery_points` | Поиск ПВЗ в городе |
-| `cdek_cities` | Поиск городов СДЭК по названию |
+| Инструмент | CLI | Описание |
+|------------|-----|----------|
+| `cdek_create_order` | `create-order` | Создать заказ на доставку (от меня / ко мне, на ПВЗ / до двери) |
+| `cdek_track` | `track` | Отследить заказ по номеру СДЭК |
+| `cdek_barcode` | `barcode` | Скачать PDF штрихкода для заказа |
+| `cdek_label` | `label` | Скачать этикетку (A4/A5/A6/A7, по умолчанию A6 ~70x120мм) |
+| `cdek_waybill` | `waybill` | Скачать PDF накладной для заказа |
+| `cdek_delivery_points` | `delivery-points` | Поиск ПВЗ в городе |
+| `cdek_cities` | `cities` | Поиск городов СДЭК по названию |
 
 ### Локальный справочник товаров
-| Инструмент | Описание |
-|------------|----------|
-| `goods_list` | Список всех товаров |
-| `goods_add` | Добавить товар (название, вес, габариты, цена) |
-| `goods_remove` | Удалить товар по названию |
+| Инструмент | CLI | Описание |
+|------------|-----|----------|
+| `goods_list` | `goods list` | Список всех товаров |
+| `goods_add` | `goods add` | Добавить товар (название, вес, габариты, цена) |
+| `goods_remove` | `goods remove` | Удалить товар по названию |
 
 Товары хранятся локально в `~/.config/mcp-server-cdek/goods.json`. При создании заказа параметры берутся из справочника (если не указаны явно).
 
 ### Настройки
-| Инструмент | Описание |
-|------------|----------|
-| `config_show` | Показать текущую конфигурацию (отправитель, ПВЗ, дефолты товара) |
-| `config_set` | Установить значение конфигурации |
+| Инструмент | CLI | Описание |
+|------------|-----|----------|
+| `config_show` | — | Показать текущую конфигурацию (отправитель, ПВЗ, дефолты товара) |
+| `config_set` | — | Установить значение конфигурации |
 
 Настройки хранятся в `~/.config/mcp-server-cdek/config.json`. Можно настроить через Claude: *«установи компанию-отправителя ООО Рога»*.
 
-## Настройка
+---
 
-### Шаг 1. Получить ключи API СДЭК
+## MCP-сервер
+
+### Установка
+
+#### Шаг 1. Получить ключи API СДЭК
 
 1. Зарегистрируйтесь в [личном кабинете СДЭК](https://lk.cdek.ru)
 2. Перейдите в **Настройки** → **Интеграция**
 3. Скопируйте **Client ID** и **Client Secret**
 
-### Шаг 2. Подключить MCP-сервер
+#### Шаг 2. Подключить MCP-сервер
 
-#### Claude Code (CLI в терминале)
+### Подключение к Claude Code
 
 **Способ 1: через uvx** (не требует установки пакета)
 
@@ -82,7 +110,7 @@ claude mcp add cdek \
 claude mcp remove cdek
 ```
 
-#### Claude Desktop (десктопное приложение)
+### Подключение к Claude Desktop
 
 Добавьте в конфигурационный файл:
 
@@ -93,6 +121,7 @@ claude mcp remove cdek
 | Claude Desktop | Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
 | Claude Desktop | Linux | `~/.config/Claude/claude_desktop_config.json` |
 
+**Через uvx:**
 ```json
 {
   "mcpServers": {
@@ -108,33 +137,59 @@ claude mcp remove cdek
 }
 ```
 
+**Через pip** (после `pip install mcp-server-cdek`):
+```json
+{
+  "mcpServers": {
+    "cdek": {
+      "command": "python",
+      "args": ["-m", "mcp_server_cdek"],
+      "env": {
+        "CDEK_CLIENT": "ваш_client_id",
+        "CDEK_SECRET": "ваш_client_secret"
+      }
+    }
+  }
+}
+```
+
 Остальные настройки (отправитель, ПВЗ, дефолты товара) задаются через `config_set` или env vars (см. таблицу ниже).
 
-### Переменные окружения
+### Подключение через --mcp-config
 
-| Переменная | Обязательная | Описание |
-|-----------|:-----------:|----------|
-| `CDEK_CLIENT` | да | Client ID из личного кабинета СДЭК |
-| `CDEK_SECRET` | да | Client Secret из личного кабинета СДЭК |
-| `CDEK_SENDER_COMPANY` | нет* | Название компании отправителя |
-| `CDEK_SENDER_NAME` | нет* | Краткое имя отправителя |
-| `CDEK_SENDER_FULL_NAME` | нет* | Полное ФИО отправителя |
-| `CDEK_SENDER_EMAIL` | нет* | Email отправителя |
-| `CDEK_SENDER_PHONE` | нет* | Телефон отправителя |
-| `CDEK_MY_PVZ` | нет* | Код вашего ПВЗ (для приёма посылок "ко мне") |
-| `CDEK_DEFAULT_PRODUCT_NAME` | нет* | Название товара по умолчанию (Товар) |
-| `CDEK_DEFAULT_WEIGHT` | нет* | Вес по умолчанию в кг (0.17) |
-| `CDEK_DEFAULT_HEIGHT` | нет* | Высота по умолчанию в см (8) |
-| `CDEK_DEFAULT_WIDTH` | нет* | Ширина по умолчанию в см (7) |
-| `CDEK_DEFAULT_LENGTH` | нет* | Длина по умолчанию в см (10) |
+Подключает сервер только на время одной сессии Claude, не сохраняя в настройки. Токен хранится в отдельном `.env.mcp` файле, а не в конфиге Claude.
 
-\* Можно задать через `config_set` вместо переменных окружения. Env vars имеют приоритет над конфиг-файлом.
+Из JSON-строки:
+```bash
+claude --mcp-config '{"cdek":{"command":"bash","args":["-c","source ~/.env.mcp && exec uvx mcp-server-cdek"]}}'
+```
 
-### Шаг 3. Проверить
+Из файла:
+```bash
+claude --mcp-config ~/mcp-servers.json
+```
+
+Пример `~/mcp-servers.json`:
+```json
+{
+  "cdek": {
+    "command": "bash",
+    "args": ["-c", "source ~/.env.mcp && exec uvx mcp-server-cdek"]
+  }
+}
+```
+
+Пример `~/.env.mcp`:
+```
+CDEK_CLIENT=ваш_client_id
+CDEK_SECRET=ваш_client_secret
+```
+
+#### Шаг 3. Проверить
 
 Попросите Claude: *«найди ПВЗ СДЭК в Москве на Тверской»* — он вызовет `cdek_delivery_points`.
 
-## Примеры (MCP)
+### Примеры (MCP)
 
 - «отправь посылку Иванову на ПВЗ MSK005, телефон +79001234567» → `cdek_create_order`
 - «отправь посылку до двери: Москва, Тверская 1, Петрову +79007654321» → `cdek_create_order`
@@ -149,20 +204,47 @@ claude mcp remove cdek
 - «добавь товар: Wi-Fi модем, 0.17 кг, 8x7x10 см» → `goods_add`
 - «список товаров» → `goods_list`
 
-## CLI-режим
+---
 
-Пакет можно использовать как CLI-инструмент в терминале. Без аргументов запускается MCP-сервер, с командой — CLI.
+## CLI-утилита
 
-### Требования
+### Установка (CLI)
 
-Переменные окружения `CDEK_CLIENT` и `CDEK_SECRET` обязательны. Данные отправителя берутся из `~/.config/mcp-server-cdek/config.json` или переменных окружения:
+```bash
+pip install mcp-server-cdek
+```
+
+Переменные окружения `CDEK_CLIENT` и `CDEK_SECRET` обязательны:
 
 ```bash
 export CDEK_CLIENT=ваш_client_id
 export CDEK_SECRET=ваш_client_secret
 ```
 
-### Команды
+Или через файл:
+
+```bash
+mcp-server-cdek --env /path/to/.env <command>
+```
+
+Формат файла — `KEY=VALUE`, по одной переменной на строку, `#`-комментарии.
+
+Данные отправителя берутся из `~/.config/mcp-server-cdek/config.json` или переменных окружения.
+
+### Использование (CLI)
+
+Без аргументов запускается MCP-сервер, с командой — CLI. Все команды выводят JSON.
+
+```bash
+# Версия
+mcp-server-cdek --version
+
+# Справка
+mcp-server-cdek --help
+mcp-server-cdek <command> --help
+```
+
+### Примеры команд
 
 ```bash
 # Создать заказ (от меня на ПВЗ)
@@ -199,7 +281,68 @@ mcp-server-cdek goods add --name "Wi-Fi модем" --weight 0.17 --height 8 --w
 mcp-server-cdek goods remove --name "Wi-Fi модем"
 ```
 
-Все команды выводят результат в JSON.
+---
+
+## Pydantic-модели
+
+Пакет содержит типизированные Pydantic-модели всех объектов API СДЭК v2. Модели можно использовать в своих Python-программах для валидации данных и автодополнения в IDE.
+
+### Установка (библиотеки)
+
+```bash
+pip install mcp-server-cdek
+```
+
+### Использование в своих программах
+
+```python
+from mcp_server_cdek.models import OrderRequest, TariffRequest, Location, Package, Item
+
+# Валидация данных из API
+data = {"tariff_code": 136, "from_location": {"code": 44}, "to_location": {"code": 137}}
+req = TariffRequest.model_validate(data)
+print(req.tariff_code)  # type-safe доступ к полям
+
+# Создание объекта
+item = Item(name="Товар", ware_key="ART001", weight=170, cost=1000, amount=1, payment={"value": 0})
+print(item.model_dump_json())
+```
+
+Все модели используют `extra="allow"` для forward compatibility — неизвестные поля API не вызывают ошибок.
+
+Полный список моделей: [`models.py`](src/mcp_server_cdek/models.py)
+
+---
+
+## Переменные окружения
+
+| Переменная | Обязательная | По умолчанию | Описание |
+|------------|:------------:|:------------:|----------|
+| `CDEK_CLIENT` | да | — | Client ID из личного кабинета СДЭК |
+| `CDEK_SECRET` | да | — | Client Secret из личного кабинета СДЭК |
+| `CDEK_SENDER_COMPANY` | нет | — | Название компании отправителя |
+| `CDEK_SENDER_NAME` | нет | — | Краткое имя отправителя |
+| `CDEK_SENDER_FULL_NAME` | нет | — | Полное ФИО отправителя |
+| `CDEK_SENDER_EMAIL` | нет | — | Email отправителя |
+| `CDEK_SENDER_PHONE` | нет | — | Телефон отправителя |
+| `CDEK_MY_PVZ` | нет | — | Код вашего ПВЗ (для приёма посылок "ко мне") |
+| `CDEK_DEFAULT_PRODUCT_NAME` | нет | `Товар` | Название товара по умолчанию |
+| `CDEK_DEFAULT_WEIGHT` | нет | `0.17` | Вес по умолчанию в кг |
+| `CDEK_DEFAULT_HEIGHT` | нет | `8` | Высота по умолчанию в см |
+| `CDEK_DEFAULT_WIDTH` | нет | `7` | Ширина по умолчанию в см |
+| `CDEK_DEFAULT_LENGTH` | нет | `10` | Длина по умолчанию в см |
+| `CDEK_TIMEOUT` | нет | `30` | Таймаут HTTP-запросов к API (секунды) |
+| `CDEK_FILE_TIMEOUT` | нет | `60` | Таймаут скачивания файлов (секунды) |
+
+Настройки отправителя можно также задать через `config_set` — env vars имеют приоритет над конфиг-файлом.
+
+## Разработка
+
+```bash
+pip install -e ".[test]"
+ruff check src/ tests/
+pytest tests/ -v
+```
 
 ## Лицензия
 

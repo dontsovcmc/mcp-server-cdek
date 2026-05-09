@@ -90,3 +90,11 @@ CLAUDE_DEBUG=1 claude        # максимум логов
 | `No module named mcp_server_cdek` | pip установил в другой Python | Используйте entry point `mcp-server-cdek` вместо `python -m` |
 | `CDEK auth error 401` | Неверные Client ID или Secret | Проверьте ключи в личном кабинете СДЭК |
 | Таймаут при подключении | Сервер не ответил за 10 секунд | Проверьте сеть и ключи API |
+
+## Бейджик версии в README
+
+В начале каждого `README.md` обязательно указывать бейджик с текущей версией. Обновлять при каждом релизе:
+
+```markdown
+[![Version](https://img.shields.io/badge/version-X.Y.Z-blue)](ссылка_на_репозиторий)
+```

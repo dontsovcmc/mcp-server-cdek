@@ -1,6 +1,6 @@
 import json
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from mcp.shared.memory import create_connected_server_and_client_session
 from mcp_server_cdek.server import mcp
